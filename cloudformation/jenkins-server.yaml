@@ -3,7 +3,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
 Resources:
-  JenkinsServer:
+  JenkinsInstance:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t2.micro
@@ -13,13 +13,32 @@ Resources:
           Value: "Jenkins_Server"
       SecurityGroups:
         - !Ref JenkinsSecurityGroup
-      UserData: !Base64 |
-        #!/bin/bash -ex
-        wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
-        rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io.key
-        amazon-linux-extras install -y java-openjdk11
-        yum install -y jenkins
-        service jenkins start
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -x
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource JenkinsInstance --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --region ${AWS::Region} --stack ${AWS::StackName} --resource JenkinsInstance
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT15M
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          commands:
+            01_openjdk_install:
+              command: sudo amazon-linux-extras install -y java-openjdk11
+            02_jenkins_repo:
+              command: sudo wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+            03_jenkins_key:
+              command: sudo rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io.key
+            04_jenkins_install:
+              command: sudo yum install -y jenkins
+          services:
+            sysvinit:
+              jenkins:
+                enabled: true
+                ensureRunning: true
   JenkinsSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -33,4 +52,3 @@ Resources:
           FromPort: 8080
           ToPort: 8080
           CidrIp: 0.0.0.0/0
-
