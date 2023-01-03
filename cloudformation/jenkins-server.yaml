@@ -4,12 +4,17 @@ AWSTemplateFormatVersion: "2010-09-09"
 
 Parameters:
   InstanceType:
+    Description: "Instance type used for jenkins server"
     Type: String
     Default: t2.micro
     AllowedValues:
       - t2.micro
       - t2.small
       - t2.medium
+  JenkinsPlugins:
+    Description: "Name of plugins installed on jenkins"
+    Type: CommaDelimitedList
+    Default: "github, gradle"
 
 Resources:
   JenkinsInstance:
@@ -30,10 +35,14 @@ Resources:
     CreationPolicy:
       ResourceSignal:
         Count: 1
-        Timeout: PT15M
+        Timeout: PT30M
     Metadata:
       AWS::CloudFormation::Init:
-        config:
+        configSets:
+          default:
+            - JenkinsInstall
+            - JenkinsPlugin
+        JenkinsInstall:
           packages:
             yum:
               git: []
@@ -51,6 +60,23 @@ Resources:
               jenkins:
                 enabled: true
                 ensureRunning: true
+        JenkinsPlugin:
+          files:
+            /local/jar/jenkins-cli.jar:
+              source: "http://localhost:8080/jnlpJars/jenkins-cli.jar"
+              mode: "000755"
+          commands:
+            01_install_plugins:
+              command: !Join
+                - " "
+                - - java -jar /local/jar/jenkins-cli.jar -s http://localhost:8080
+                  - -auth admin:$(sudo cat /var/lib/jenkins/secrets/initialAdminPassword)
+                  - install-plugin
+                  - !Join
+                    - " "
+                    - !Ref JenkinsPlugins
+                  - -restart
+
   JenkinsSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
